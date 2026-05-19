@@ -33,14 +33,20 @@ export default {
                     </div>
                 </div>
                 <div class="doc-list" v-if="docList.length > 0">
-                    <div class="doc-card" v-for="doc in docList" :key="doc.id" @click="openDoc(doc.id)">
-                        <div class="doc-title">{{ doc.title }}</div>
-                        <div class="doc-meta">
-                            <span>{{ doc.lastModifyTime }}</span>
-                            <div class="doc-avatars">
-                                <div class="avatar small" v-for="u in doc.collaborators" :key="u.id">{{ u.name[0] }}</div>
+                    <div class="doc-card" v-for="doc in docList" :key="doc.id">
+                        <div class="doc-card-main" @click="openDoc(doc.id)">
+                            <div class="doc-title">
+                                {{ doc.title }}
+                                <span v-if="doc.inviterName" class="collab-badge">协作 · {{ doc.inviterName }} 邀请</span>
+                            </div>
+                            <div class="doc-meta">
+                                <span>{{ doc.lastModifyTime }}</span>
+                                <div class="doc-avatars">
+                                    <div class="avatar small" v-for="u in doc.collaborators" :key="u.id">{{ u.name[0] }}</div>
+                                </div>
                             </div>
                         </div>
+                        <button class="doc-delete-btn" @click.stop="deleteDoc(doc.id)" title="删除">🗑</button>
                     </div>
                 </div>
                 <div class="empty-state" v-else>
@@ -102,6 +108,19 @@ export default {
         },
         openDoc(id) {
             this.$router.push('/doc/' + id);
+        },
+        async deleteDoc(id) {
+            if (!confirm('确定删除该文档？删除后可在回收站恢复。')) return;
+            try {
+                const res = await store.request('/doc/' + id, {
+                    method: 'DELETE'
+                });
+                if (res.code === 200) {
+                    this.docList = this.docList.filter(d => d.id !== id);
+                }
+            } catch (e) {
+                console.error('删除失败', e);
+            }
         }
     }
 };

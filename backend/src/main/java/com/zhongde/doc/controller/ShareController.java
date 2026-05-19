@@ -13,6 +13,7 @@ import com.zhongde.doc.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +21,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/doc/{docId}/share")
 public class ShareController {
 
     private final DocService docService;
@@ -35,7 +35,7 @@ public class ShareController {
         this.userService = userService;
     }
 
-    @GetMapping
+    @GetMapping("/api/doc/{docId}/share")
     public Result<Map<String, Object>> getShareInfo(@PathVariable String docId) {
         DocInfo doc = docService.getById(docId);
         LambdaQueryWrapper<DocShare> wrapper = new LambdaQueryWrapper<>();
@@ -46,6 +46,7 @@ public class ShareController {
             share.setDocId(docId);
             share.setShareCode(UUID.randomUUID().toString().replace("-", "").substring(0, 16));
             share.setPermission("EDIT");
+            share.setCreateTime(LocalDateTime.now());
             docShareMapper.insert(share);
         }
 
@@ -63,13 +64,13 @@ public class ShareController {
 
         Map<String, Object> data = new HashMap<>();
         data.put("title", doc != null ? doc.getTitle() : "");
-        data.put("shareLink", "http://localhost:8080/share/" + share.getShareCode());
+        data.put("shareLink", "http://localhost:3000/#/share/" + share.getShareCode());
         data.put("permission", share.getPermission());
         data.put("collaborators", collaborators);
         return Result.success(data);
     }
 
-    @PutMapping
+    @PutMapping("/api/doc/{docId}/share")
     public Result<Void> setPermission(@PathVariable String docId, @RequestBody Map<String, String> params) {
         LambdaQueryWrapper<DocShare> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(DocShare::getDocId, docId);
@@ -81,10 +82,11 @@ public class ShareController {
         return Result.success();
     }
 
-    @PostMapping("/invite")
-    public Result<Void> invite(@PathVariable String docId, @RequestBody Map<String, String> params) {
+    @PostMapping("/api/doc/{docId}/share/invite")
+    public Result<Void> invite(@PathVariable String docId, @RequestBody Map<String, String> params, HttpServletRequest request) {
+        Long inviterId = (Long) request.getAttribute("userId");
         String username = params.get("username");
-        User user = userService.getById(1L);
+        User user = userService.getByUsername(username);
         if (user == null) {
             return Result.error("用户不存在");
         }
@@ -92,15 +94,37 @@ public class ShareController {
         col.setDocId(docId);
         col.setUserId(user.getId());
         col.setPermission(params.get("permission"));
+        col.setInviterId(inviterId);
+        col.setCreateTime(LocalDateTime.now());
         docCollaboratorMapper.insert(col);
         return Result.success();
     }
 
-    @DeleteMapping("/collaborator/{userId}")
+    @DeleteMapping("/api/doc/{docId}/share/collaborator/{userId}")
     public Result<Void> removeCollaborator(@PathVariable String docId, @PathVariable Long userId) {
         LambdaQueryWrapper<DocCollaborator> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(DocCollaborator::getDocId, docId).eq(DocCollaborator::getUserId, userId);
         docCollaboratorMapper.delete(wrapper);
         return Result.success();
+    }
+
+    @GetMapping("/api/share/{code}")
+    public Result<Map<String, Object>> getByShareCode(@PathVariable String code) {
+        LambdaQueryWrapper<DocShare> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(DocShare::getShareCode, code);
+        DocShare share = docShareMapper.selectOne(wrapper);
+        if (share == null) {
+            return Result.error("分享链接无效或已过期");
+        }
+        DocInfo doc = docService.getById(share.getDocId());
+        if (doc == null) {
+            return Result.error("文档不存在");
+        }
+        Map<String, Object> data = new HashMap<>();
+        data.put("docId", share.getDocId());
+        data.put("title", doc.getTitle());
+        data.put("content", doc.getContent());
+        data.put("permission", share.getPermission());
+        return Result.success(data);
     }
 }

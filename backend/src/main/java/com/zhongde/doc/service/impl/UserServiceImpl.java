@@ -64,6 +64,13 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public User getByUsername(String username) {
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(User::getUsername, username);
+        return userMapper.selectOne(wrapper);
+    }
+
+    @Override
     public void updateProfile(Long userId, String username, String email) {
         User user = new User();
         user.setId(userId);

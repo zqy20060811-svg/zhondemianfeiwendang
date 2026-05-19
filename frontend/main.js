@@ -10,6 +10,7 @@ import DocShare from './pages/DocShare.js';
 import DocHistory from './pages/DocHistory.js';
 import UserProfile from './pages/UserProfile.js';
 import RecycleBin from './pages/RecycleBin.js';
+import ShareView from './pages/ShareView.js';
 
 const routes = [
     { path: '/', redirect: '/login' },
@@ -20,7 +21,8 @@ const routes = [
     { path: '/doc/:id/share', component: DocShare, meta: { auth: true } },
     { path: '/doc/:id/history', component: DocHistory, meta: { auth: true } },
     { path: '/profile', component: UserProfile, meta: { auth: true } },
-    { path: '/recycle', component: RecycleBin, meta: { auth: true } }
+    { path: '/recycle', component: RecycleBin, meta: { auth: true } },
+    { path: '/share/:code', component: ShareView }
 ];
 
 const router = createRouter({

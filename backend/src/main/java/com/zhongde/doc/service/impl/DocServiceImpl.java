@@ -1,8 +1,10 @@
 package com.zhongde.doc.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zhongde.doc.entity.DocCollaborator;
 import com.zhongde.doc.entity.DocInfo;
 import com.zhongde.doc.entity.RecycleBin;
+import com.zhongde.doc.mapper.DocCollaboratorMapper;
 import com.zhongde.doc.mapper.DocInfoMapper;
 import com.zhongde.doc.mapper.RecycleBinMapper;
 import com.zhongde.doc.service.DocService;
@@ -10,19 +12,23 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class DocServiceImpl implements DocService {
 
     private final DocInfoMapper docInfoMapper;
     private final RecycleBinMapper recycleBinMapper;
+    private final DocCollaboratorMapper docCollaboratorMapper;
     private final RedisTemplate<String, String> redisTemplate;
 
-    public DocServiceImpl(DocInfoMapper docInfoMapper, RecycleBinMapper recycleBinMapper, RedisTemplate<String, String> redisTemplate) {
+    public DocServiceImpl(DocInfoMapper docInfoMapper, RecycleBinMapper recycleBinMapper, DocCollaboratorMapper docCollaboratorMapper, RedisTemplate<String, String> redisTemplate) {
         this.docInfoMapper = docInfoMapper;
         this.recycleBinMapper = recycleBinMapper;
+        this.docCollaboratorMapper = docCollaboratorMapper;
         this.redisTemplate = redisTemplate;
     }
 
@@ -44,6 +50,23 @@ public class DocServiceImpl implements DocService {
 
     @Override
     public List<DocInfo> list(Long userId, String type, String keyword) {
+        if ("collab".equals(type)) {
+            LambdaQueryWrapper<DocCollaborator> cw = new LambdaQueryWrapper<>();
+            cw.eq(DocCollaborator::getUserId, userId);
+            List<DocCollaborator> collaborators = docCollaboratorMapper.selectList(cw);
+            if (collaborators.isEmpty()) {
+                return new ArrayList<>();
+            }
+            List<String> docIds = collaborators.stream().map(DocCollaborator::getDocId).collect(Collectors.toList());
+            LambdaQueryWrapper<DocInfo> wrapper = new LambdaQueryWrapper<>();
+            wrapper.in(DocInfo::getId, docIds);
+            wrapper.eq(DocInfo::getStatus, 1);
+            if (keyword != null && !keyword.isEmpty()) {
+                wrapper.like(DocInfo::getTitle, keyword);
+            }
+            wrapper.orderByDesc(DocInfo::getUpdateTime);
+            return docInfoMapper.selectList(wrapper);
+        }
         LambdaQueryWrapper<DocInfo> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(DocInfo::getOwnerId, userId);
         wrapper.eq(DocInfo::getStatus, 1);
@@ -107,6 +130,7 @@ public class DocServiceImpl implements DocService {
         DocInfo doc = new DocInfo();
         doc.setId(docId);
         doc.setStatus(1);
+        doc.setUpdateTime(LocalDateTime.now());
         docInfoMapper.updateById(doc);
 
         LambdaQueryWrapper<RecycleBin> wrapper = new LambdaQueryWrapper<>();

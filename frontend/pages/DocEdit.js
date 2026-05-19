@@ -44,14 +44,15 @@ export default {
                     <div class="online-users">
                         <div class="avatar small" v-for="u in onlineUsers" :key="u.id" :style="{borderColor: u.color}">{{ u.name[0] }}</div>
                     </div>
-                    <button class="btn-primary" @click="saveDoc">保存</button>
-                    <button class="btn-secondary" @click="shareDoc">分享</button>
+                    <button class="btn-primary" @click="saveDoc" v-if="permission !== 'VIEW'">保存</button>
+                    <span v-else class="view-only-badge">仅查看</span>
+                    <button class="btn-secondary" @click="shareDoc" v-if="permission === 'OWNER'">分享</button>
                     <button class="btn-secondary" @click="showHistory">历史版本</button>
                 </div>
             </div>
             <div class="edit-body">
                 <div class="editor-left">
-                    <textarea ref="editorTextarea" class="edit-textarea" v-model="content" @input="onEdit" placeholder="开始写作... 支持 Markdown 语法"></textarea>
+                    <textarea ref="editorTextarea" class="edit-textarea" v-model="content" @input="onEdit" :disabled="permission === 'VIEW'" :placeholder="permission === 'VIEW' ? '仅查看权限，无法编辑' : '开始写作... 支持 Markdown 语法'"></textarea>
                 </div>
                 <div class="editor-right">
                     <div class="preview-title">预览</div>
@@ -86,7 +87,8 @@ export default {
             activities: [],
             ws: null,
             localVersion: 0,
-            applyingRemoteChange: false
+            applyingRemoteChange: false,
+            permission: 'VIEW'
         };
     },
     computed: {
@@ -96,6 +98,7 @@ export default {
     },
     async mounted() {
         await this.fetchDetail();
+        await this.fetchPermission();
         this.connectWebSocket();
     },
     beforeUnmount() {
@@ -114,6 +117,16 @@ export default {
                 }
             } catch (e) {
                 console.error('获取文档详情失败', e);
+            }
+        },
+        async fetchPermission() {
+            try {
+                const res = await store.request('/doc/' + this.docId + '/permission');
+                if (res.code === 200 && res.data) {
+                    this.permission = res.data.permission || 'VIEW';
+                }
+            } catch (e) {
+                console.error('获取权限失败', e);
             }
         },
         onEdit() {

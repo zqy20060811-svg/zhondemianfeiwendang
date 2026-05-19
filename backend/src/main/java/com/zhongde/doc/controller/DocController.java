@@ -1,8 +1,13 @@
 package com.zhongde.doc.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zhongde.doc.common.Result;
+import com.zhongde.doc.entity.DocCollaborator;
 import com.zhongde.doc.entity.DocInfo;
+import com.zhongde.doc.entity.User;
+import com.zhongde.doc.mapper.DocCollaboratorMapper;
 import com.zhongde.doc.service.DocService;
+import com.zhongde.doc.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -17,10 +22,14 @@ import java.util.stream.Collectors;
 public class DocController {
 
     private final DocService docService;
+    private final DocCollaboratorMapper docCollaboratorMapper;
+    private final UserService userService;
     private final RedisTemplate<String, String> redisTemplate;
 
-    public DocController(DocService docService, RedisTemplate<String, String> redisTemplate) {
+    public DocController(DocService docService, DocCollaboratorMapper docCollaboratorMapper, UserService userService, RedisTemplate<String, String> redisTemplate) {
         this.docService = docService;
+        this.docCollaboratorMapper = docCollaboratorMapper;
+        this.userService = userService;
         this.redisTemplate = redisTemplate;
     }
 
@@ -45,6 +54,15 @@ public class DocController {
             m.put("id", d.getId());
             m.put("title", d.getTitle());
             m.put("updateTime", d.getUpdateTime());
+            if ("collab".equals(type)) {
+                LambdaQueryWrapper<DocCollaborator> cw = new LambdaQueryWrapper<>();
+                cw.eq(DocCollaborator::getDocId, d.getId()).eq(DocCollaborator::getUserId, userId);
+                DocCollaborator col = docCollaboratorMapper.selectOne(cw);
+                if (col != null && col.getInviterId() != null) {
+                    User inviter = userService.getById(col.getInviterId());
+                    m.put("inviterName", inviter != null ? inviter.getUsername() : "");
+                }
+            }
             return m;
         }).collect(Collectors.toList());
         Map<String, Object> data = new HashMap<>();
@@ -109,6 +127,50 @@ public class DocController {
 
     @PostMapping("/{docId}/rollback")
     public Result<Void> rollback(@PathVariable String docId, @RequestBody Map<String, Integer> params) {
+        return Result.success();
+    }
+
+    @GetMapping("/{docId}/permission")
+    public Result<Map<String, Object>> getPermission(@PathVariable String docId, HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        DocInfo doc = docService.getById(docId);
+        if (doc == null) {
+            return Result.error("文档不存在");
+        }
+        String permission = "VIEW";
+        if (doc.getOwnerId().equals(userId)) {
+            permission = "OWNER";
+        } else {
+            LambdaQueryWrapper<DocCollaborator> cw = new LambdaQueryWrapper<>();
+            cw.eq(DocCollaborator::getDocId, docId).eq(DocCollaborator::getUserId, userId);
+            DocCollaborator col = docCollaboratorMapper.selectOne(cw);
+            if (col != null) {
+                permission = col.getPermission();
+            }
+        }
+        Map<String, Object> data = new HashMap<>();
+        data.put("permission", permission);
+        return Result.success(data);
+    }
+
+    @PostMapping("/{docId}/save")
+    public Result<Void> saveContent(@PathVariable String docId, @RequestBody Map<String, String> params, HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        DocInfo doc = docService.getById(docId);
+        if (doc == null) {
+            return Result.error("文档不存在");
+        }
+        boolean canEdit = doc.getOwnerId().equals(userId);
+        if (!canEdit) {
+            LambdaQueryWrapper<DocCollaborator> cw = new LambdaQueryWrapper<>();
+            cw.eq(DocCollaborator::getDocId, docId).eq(DocCollaborator::getUserId, userId);
+            DocCollaborator col = docCollaboratorMapper.selectOne(cw);
+            canEdit = col != null && "EDIT".equals(col.getPermission());
+        }
+        if (!canEdit) {
+            return Result.error("没有编辑权限");
+        }
+        docService.saveContent(docId, params.get("content"));
         return Result.success();
     }
 }
